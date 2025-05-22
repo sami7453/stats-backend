@@ -19,13 +19,6 @@
 2. [Technologies](#%EF%B8%8F-technologies)  
 3. [Prérequis](#%EF%B8%8F-prérequis)  
 4. [Installation](#%EF%B8%8F-installation)  
-5. [Variables d’environnement](#-variables-denvironnement)  
-6. [Scripts utiles](#-scripts-utiles)  
-7. [Structure du projet](#-structure-du-projet)  
-8. [API Endpoints](#-api-endpoints)  
-9. [Base de données](#-base-de-données)  
-10. [Contribuer](#-contribuer)  
-11. [Licence](#-licence)  
 
 ---
 
