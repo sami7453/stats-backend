@@ -22,7 +22,7 @@ router.get('/:id(\\d+)', async (req, res) => {
         return res.status(400).json({ error: 'Invalid match ID' });
     }
     try {
-        const match = await statsModel.getMatchById(matchId);
+        const match = await matchModels.getMatchById(matchId);
         if (!match) {
             return res.status(404).json({ error: 'Match not found' });
         }
@@ -64,7 +64,7 @@ router.get('/last', async (req, res) => {
 router.post('/', requireAuth, async (req, res) => {
     const matchData = req.body;
     try {
-        const newMatch = await statsModel.createMatch(matchData);
+        const newMatch = await matchModels.createMatch(matchData);
         res.status(201).json(newMatch);
     } catch (error) {
         console.error('Error creating match:', error);
@@ -79,7 +79,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     }
     const matchData = req.body;
     try {
-        const updatedMatch = await statsModel.updateMatch(matchId, matchData);
+        const updatedMatch = await matchModels.updateMatch(matchId, matchData);
         if (!updatedMatch) {
             return res.status(404).json({ error: 'Match not found' });
         }
@@ -96,7 +96,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
         return res.status(400).json({ error: 'Invalid match ID' });
     }
     try {
-        const deletedMatch = await statsModel.deleteMatch(matchId);
+        const deletedMatch = await matchModels.deleteMatch(matchId);
         if (!deletedMatch) {
             return res.status(404).json({ error: 'Match not found' });
         }
