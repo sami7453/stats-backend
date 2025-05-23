@@ -155,6 +155,7 @@ router.post(
                 weight_kg: parseFloat(req.body.weight_kg),
                 position: req.body.position,
                 photo_url: photoUrl,
+                youtube_url: req.body.youtube_url,
                 passportIds
             });
 
@@ -174,32 +175,59 @@ router.put(
     requireAuth,
     upload.single('photo'),
     async (req, res) => {
-        const playerId = parseInt(req.params.id, 10);
+        const playerId = parseInt(req.params.id, 10); // Correction: base 10 au lieu de 11
         if (isNaN(playerId)) {
             return res.status(400).json({ error: 'Invalid player ID' });
         }
-        try {
-            // 1. Récupère le nouveau photo_url si y en a une
-            const photoUrl = req.file
-                ? `/uploads/${req.file.filename}`
-                : undefined;
 
-            // 2. Appelle le modèle en lui passant body + photoUrl
-            const updated = await PlayerModel.updatePlayerInfo(playerId, {
+        try {
+            // 1. Préparation des données à mettre à jour
+            const updateData = {
                 ...req.body,
-                photo_url: photoUrl
-            });
+                // On ne garde que les champs pertinents pour éviter les injections
+                gender: req.body.gender,
+                last_name: req.body.last_name,
+                first_name: req.body.first_name,
+                birth_date: req.body.birth_date,
+                height_cm: req.body.height_cm,
+                weight_kg: req.body.weight_kg,
+                position: req.body.position,
+                youtube_url: req.body.youtube_url // Ajout du champ YouTube
+            };
+
+            // 2. Gestion de la photo si elle est fournie
+            if (req.file) {
+                updateData.photo_url = `/uploads/${req.file.filename}`;
+            }
+
+            // 3. Validation des données (optionnel mais recommandé)
+            if (updateData.youtube_url && !isValidYoutubeUrl(updateData.youtube_url)) {
+                return res.status(400).json({ error: 'URL YouTube invalide' });
+            }
+
+            // 4. Appel au modèle
+            const updated = await PlayerModel.updatePlayerInfo(playerId, updateData);
 
             if (!updated) {
                 return res.status(404).json({ error: 'Player not found' });
             }
+
             res.json(updated);
         } catch (err) {
             console.error('Error updating player:', err);
-            res.status(500).json({ error: 'Internal server error' });
+            res.status(500).json({
+                error: 'Internal server error',
+                details: process.env.NODE_ENV === 'development' ? err.message : undefined
+            });
         }
     }
 );
+
+// Fonction utilitaire pour valider les URLs YouTube (à placer ailleurs dans votre code)
+function isValidYoutubeUrl(url) {
+    const pattern = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
+    return pattern.test(url);
+}
 
 // ----------------- UPDATE PASSPORTS -----------------
 

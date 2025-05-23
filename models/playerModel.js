@@ -15,6 +15,7 @@ class PlayerModel {
       p.height_cm,
       p.weight_kg,
       p.position,
+      p.youtube_url,
       p.photo_url,
       -- agrégation JSON des passeports
       COALESCE(
@@ -56,6 +57,7 @@ class PlayerModel {
       weight_kg,
       position,
       photo_url,
+      youtube_url,
       passportIds = []
     } = player;
 
@@ -66,11 +68,11 @@ class PlayerModel {
       const insertPlayerText = `
             INSERT INTO player
               (gender, last_name, first_name, birth_date,
-               height_cm, weight_kg, position, photo_url)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+               height_cm, weight_kg, position, photo_url, youtube_url)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
             RETURNING id_player, gender, last_name, first_name,
                       birth_date, height_cm, weight_kg,
-                      position, photo_url
+                      position, photo_url, youtube_url
           `;
       const insertPlayerValues = [
         gender,
@@ -80,7 +82,8 @@ class PlayerModel {
         height_cm,
         weight_kg,
         position,
-        photo_url
+        photo_url,
+        youtube_url
       ];
       const playerRes = await client.query(insertPlayerText, insertPlayerValues);
       const newPlayer = playerRes.rows[0];
@@ -144,7 +147,7 @@ class PlayerModel {
 
   // ------------------ UPDATE -----------------
 
-  // models/playerModel.js
+  // PUT /players/:id
   static async updatePlayerInfo(id, data) {
     const {
       gender,
@@ -154,75 +157,98 @@ class PlayerModel {
       height_cm,
       weight_kg,
       position,
-      photo_url,       // on récupère ici la nouvelle ou undefined
-      passportIds      // si tu veux aussi gérer le multiselect
+      youtube_url = null, // Valeur par défaut explicite
+      photo_url,          // Optionnel
+      passportIds         // Optionnel
     } = data;
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
-      // 1. Mise à jour du joueur
-      const fields = [
-        'gender=$1',
-        'last_name=$2',
-        'first_name=$3',
-        'birth_date=$4',
-        'height_cm=$5',
-        'weight_kg=$6',
-        'position=$7',
-        // on n’ajoute photo_url que s’il est défini
-        ...(photo_url ? ['photo_url=$8'] : [])
-      ].join(', ');
+      // 1. Construction dynamique de la requête UPDATE
+      const updateFields = [];
+      const values = [];
+      let paramIndex = 1;
 
-      const values = [
-        gender,
-        last_name,
-        first_name,
-        birth_date,
-        height_cm,
-        weight_kg,
-        position,
-        // seulement si on a une photo
-        ...(photo_url ? [photo_url] : [])
+      // Liste des champs à mettre à jour (sauf photo_url géré séparément)
+      const fieldMappings = [
+        { field: 'gender', value: gender },
+        { field: 'last_name', value: last_name },
+        { field: 'first_name', value: first_name },
+        { field: 'birth_date', value: birth_date },
+        { field: 'height_cm', value: height_cm },
+        { field: 'weight_kg', value: weight_kg },
+        { field: 'position', value: position },
+        { field: 'youtube_url', value: youtube_url }
       ];
 
-      const updateText = `
-      UPDATE player
-         SET ${fields}
-       WHERE id_player = $${values.length + 1}
-    `;
-      await client.query(updateText, [...values, id]);
+      fieldMappings.forEach(({ field, value }) => {
+        if (value !== undefined) {
+          updateFields.push(`${field} = $${paramIndex}`);
+          values.push(value);
+          paramIndex++;
+        }
+      });
 
-      // 2. (facultatif) mise à jour des passeports
+      // Ajout conditionnel de photo_url
+      if (photo_url !== undefined) {
+        updateFields.push(`photo_url = $${paramIndex}`);
+        values.push(photo_url);
+        paramIndex++;
+      }
+
+      // Exécution de la mise à jour
+      if (updateFields.length > 0) {
+        const updateText = `
+                UPDATE player 
+                SET ${updateFields.join(', ')} 
+                WHERE id_player = $${paramIndex}
+                RETURNING *`;
+
+        const updateRes = await client.query(updateText, [...values, id]);
+        if (updateRes.rowCount === 0) {
+          throw new Error('Player not found');
+        }
+      }
+
+      // 2. Gestion des passeports (si fournis)
       if (Array.isArray(passportIds)) {
-        // supprime les anciennes liaisons
+        await client.query('BEGIN');
+
+        // Suppression des anciennes associations
         await client.query(
           'DELETE FROM player_passport WHERE player_id = $1',
           [id]
         );
-        // ré-insère les nouvelles
-        const placeholders = passportIds
-          .map((_, i) => `($1, $${i + 2})`)
-          .join(', ');
-        await client.query(
-          `INSERT INTO player_passport (player_id, passport_id)
-           VALUES ${placeholders}`,
-          [id, ...passportIds]
-        );
+
+        // Création des nouvelles associations (si nécessaire)
+        if (passportIds.length > 0) {
+          const placeholders = passportIds
+            .map((_, i) => `($1, $${i + 2})`)
+            .join(', ');
+
+          await client.query(
+            `INSERT INTO player_passport (player_id, passport_id)
+                     VALUES ${placeholders}`,
+            [id, ...passportIds]
+          );
+        }
       }
 
       await client.query('COMMIT');
 
-      // 3. Retourne le joueur mis à jour
+      // 3. Récupération du joueur mis à jour
       const { rows } = await client.query(
         'SELECT * FROM player WHERE id_player = $1',
         [id]
       );
+
       return rows[0];
 
     } catch (err) {
       await client.query('ROLLBACK');
+      console.error('Update error:', err);
       throw err;
     } finally {
       client.release();
